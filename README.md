@@ -4,6 +4,10 @@
 
 它不依赖短剧工作台、项目文件、镜头表或提示词流程。
 
+## 下载
+
+前往 [Releases](https://github.com/ggoukebo/doubao-video-auto-downloader/releases/latest) 下载 Windows x64 便携版。下载后直接运行，无需安装。
+
 ## 使用
 
 1. 启动 `豆包无水印下载器`。

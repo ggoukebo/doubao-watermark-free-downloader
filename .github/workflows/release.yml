@@ -1,0 +1,55 @@
+name: Build portable release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to upload to
+        required: true
+        default: v1.0.0
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build portable package
+        run: npm run dist:win
+
+      - name: Prepare release asset
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $exe = Get-ChildItem release -Filter "*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "Portable exe not found" }
+          $assetName = "doubao-video-auto-downloader-$version-portable.exe"
+          $assetPath = Join-Path $env:RUNNER_TEMP $assetName
+          Copy-Item -LiteralPath $exe.FullName -Destination $assetPath
+          "ASSET_PATH=$assetPath" >> $env:GITHUB_ENV
+          "ASSET_NAME=$assetName" >> $env:GITHUB_ENV
+
+      - name: Upload release asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          $hash = (Get-FileHash -LiteralPath $env:ASSET_PATH -Algorithm SHA256).Hash.ToLower()
+          $checksumPath = Join-Path $env:RUNNER_TEMP "$env:ASSET_NAME.sha256"
+          "$hash  $env:ASSET_NAME" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+          gh release upload $env:RELEASE_TAG $env:ASSET_PATH $checksumPath --clobber
