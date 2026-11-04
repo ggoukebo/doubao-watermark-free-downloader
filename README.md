@@ -2,8 +2,6 @@
 
 独立的 Windows 桌面工具。打开豆包并登录后，正常生成视频；工具会监听当前页面结果，解析无水印资源并自动保存到本机。
 
-它不依赖短剧工作台、项目文件、镜头表或提示词流程。
-
 ## 下载
 
 前往 [Releases](https://github.com/ggoukebo/doubao-video-auto-downloader/releases/latest) 下载 Windows x64 便携版。下载后直接运行，无需安装。
