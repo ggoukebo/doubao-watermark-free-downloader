@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>豆包无水印下载器</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">DB</span>
+        <div>
+          <strong>豆包无水印下载器</strong>
+          <small>INDEPENDENT CAPTURE TOOL</small>
+        </div>
+      </div>
+      <div class="top-status">
+        <span id="connectionDot" class="connection-dot"></span>
+        <span id="connectionText">豆包尚未打开</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <span class="eyebrow">HOW TO USE</span>
+          <h1>使用方法</h1>
+          <p class="hero-lead">
+            按下面三步操作，生成完成的视频会自动解析并保存到本机。
+          </p>
+          <ol class="usage-steps">
+            <li>
+              <span>01</span>
+              <div>
+                <strong>打开豆包并登录</strong>
+                <small>点击下方“打开豆包”，首次使用完成登录。</small>
+              </div>
+            </li>
+            <li>
+              <span>02</span>
+              <div>
+                <strong>正常生成视频</strong>
+                <small>保持豆包窗口打开，像平常一样生成即可。</small>
+              </div>
+            </li>
+            <li>
+              <span>03</span>
+              <div>
+                <strong>自动保存到本机</strong>
+                <small>检测到结果后自动下载，可在下载记录中查看。</small>
+              </div>
+            </li>
+          </ol>
+          <div class="hero-actions">
+            <button id="openDoubao" class="primary-button" type="button">
+              <span class="button-icon">↗</span>
+              打开豆包
+            </button>
+            <label class="switch-control">
+              <input id="monitoringToggle" type="checkbox" />
+              <span class="switch-track"><i></i></span>
+              <span>
+                <b>自动下载</b>
+                <small>检测到新视频即保存</small>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <aside class="status-board">
+          <div class="board-head">
+            <span>CAPTURE STATUS</span>
+            <span id="monitoringBadge" class="mini-badge">监听中</span>
+          </div>
+          <div class="status-message" id="statusMessage">
+            等待打开豆包窗口
+          </div>
+          <div class="stat-row">
+            <div>
+              <strong id="successCount">0</strong>
+              <span>已下载</span>
+            </div>
+            <div>
+              <strong id="activeCount">0</strong>
+              <span>进行中</span>
+            </div>
+            <div>
+              <strong id="errorCount">0</strong>
+              <span>失败</span>
+            </div>
+          </div>
+          <p class="board-note">
+            首次使用需要登录豆包。登录状态会保留，下次打开无需重复扫码。
+          </p>
+        </aside>
+      </section>
+
+      <section class="output-card">
+        <div class="card-label">
+          <span>01</span>
+          <div>
+            <strong>保存位置</strong>
+            <small>所有无水印视频都会保存在这里</small>
+          </div>
+        </div>
+        <div class="path-row">
+          <code id="outputPath">正在读取…</code>
+          <div class="path-actions">
+            <button id="chooseOutput" class="text-button" type="button">
+              更改目录
+            </button>
+            <button id="openOutput" class="text-button accent" type="button">
+              打开目录
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="activity-card">
+        <div class="activity-head">
+          <div class="card-label">
+            <span>02</span>
+            <div>
+              <strong>下载记录</strong>
+              <small>仅记录本次运行，文件会永久保存在本机</small>
+            </div>
+          </div>
+          <span class="live-label"><i></i> LIVE</span>
+        </div>
+        <div id="downloadList" class="download-list">
+          <div class="empty-state">
+            <span>00</span>
+            <strong>还没有下载任务</strong>
+            <p>点击“打开豆包”，生成视频后会出现在这里。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>本地运行 · 不上传账号数据 · 仅保存你生成并允许下载的视频</span>
+      <span>v1.0.0</span>
+    </footer>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
