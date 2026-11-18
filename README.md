@@ -4,7 +4,7 @@
 
 ## 下载
 
-前往 [Releases](https://github.com/ggoukebo/doubao-video-auto-downloader/releases/latest) 下载 Windows x64 便携版。下载后直接运行，无需安装。
+前往 [Releases](https://github.com/ggoukebo/doubao-watermark-free-downloader/releases/latest) 下载 Windows x64 便携版。下载后直接运行，无需安装。
 
 ## 使用
 

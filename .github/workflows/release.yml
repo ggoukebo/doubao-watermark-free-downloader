@@ -6,7 +6,7 @@ on:
       tag:
         description: Existing release tag to upload to
         required: true
-        default: v1.0.0
+        default: v1.1.0
   push:
     tags:
       - "v*"
@@ -37,7 +37,7 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $exe = Get-ChildItem release -Filter "*.exe" | Select-Object -First 1
           if (-not $exe) { throw "Portable exe not found" }
-          $assetName = "doubao-video-auto-downloader-$version-portable.exe"
+          $assetName = "doubao-watermark-free-downloader-$version-portable.exe"
           $assetPath = Join-Path $env:RUNNER_TEMP $assetName
           Copy-Item -LiteralPath $exe.FullName -Destination $assetPath
           "ASSET_PATH=$assetPath" >> $env:GITHUB_ENV
