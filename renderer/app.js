@@ -93,7 +93,7 @@ function createEmptyState() {
   const title = document.createElement('strong')
   title.textContent = '还没有下载任务'
   const copy = document.createElement('p')
-  copy.textContent = '点击“打开豆包”，生成视频后会出现在这里。'
+  copy.textContent = '点击“打开豆包”，生成图片或视频后会出现在这里。'
   wrapper.append(index, title, copy)
   return wrapper
 }
@@ -110,7 +110,8 @@ function createRecordRow(record) {
   const info = document.createElement('div')
   info.className = 'record-info'
   const title = document.createElement('strong')
-  title.textContent = record.filename || '豆包视频'
+  title.textContent =
+    record.filename || (record.kind === 'image' ? '豆包图片' : '豆包视频')
   const detail = document.createElement('small')
   detail.textContent = `${formatTime(record.createdAt)} · ${
     record.message || '处理中'
@@ -122,7 +123,7 @@ function createRecordRow(record) {
   if (record.status === 'success') {
     const play = document.createElement('button')
     play.type = 'button'
-    play.textContent = '播放'
+    play.textContent = record.kind === 'image' ? '打开' : '播放'
     play.addEventListener('click', () => api.openVideo(record.id))
     const locate = document.createElement('button')
     locate.type = 'button'
@@ -187,8 +188,9 @@ api.onEvent((event) => {
   if (event.type === 'record') {
     upsertRecord(event.record)
     if (event.record?.status === 'success') {
-      elements.statusMessage.textContent = '无水印视频已保存到本机'
-      showToast('豆包视频已无水印保存', 'success')
+      const label = event.record?.kind === 'image' ? '图片' : '视频'
+      elements.statusMessage.textContent = `无水印${label}已保存到本机`
+      showToast(`豆包${label}已无水印保存`, 'success')
     }
     return
   }

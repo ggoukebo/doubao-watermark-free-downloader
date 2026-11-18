@@ -17,12 +17,13 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import {
   extractFallbackApis,
+  extractUnwatermarkedImages,
   findVideoUrlInFallbackPayload,
   rewriteFallbackApi,
 } from './lib/doubao-media.mjs'
@@ -40,6 +41,15 @@ const CHAIN_PATTERNS = [
     urlPattern: '*dola.com/im/chain/single*',
     requestStage: 'Response',
   },
+  {
+    urlPattern: '*doubao.com/creativity/canvas_workspace/doc/get*',
+    requestStage: 'Response',
+  },
+]
+const INSPECT_PATH_PATTERNS = [
+  '/im/chain/single',
+  '/chat/completion',
+  '/creativity/canvas_workspace/doc/get',
 ]
 
 let mainWindow
@@ -51,6 +61,7 @@ let ignoreUntil = 0
 let responseQueue = Promise.resolve()
 const seenResponseHashes = new Set()
 const downloadedUrls = new Set()
+const downloadedImageKeys = new Set()
 const downloads = []
 const smokeTest = process.argv.includes('--smoke-test')
 
@@ -61,7 +72,7 @@ function configPath() {
 }
 
 function defaultOutputDir() {
-  return join(app.getPath('videos'), '豆包无水印视频')
+  return join(app.getPath('videos'), '豆包无水印作品')
 }
 
 async function loadConfig() {
@@ -118,6 +129,14 @@ function uniqueFilename() {
   return `豆包视频_${timestamp()}_${randomUUID().slice(0, 4)}.mp4`
 }
 
+function uniqueImageBasename() {
+  return `豆包图片_${timestamp()}_${randomUUID().slice(0, 4)}`
+}
+
+function isInspectableUrl(url) {
+  return INSPECT_PATH_PATTERNS.some((pattern) => url.includes(pattern))
+}
+
 async function downloadVideo(url, filename) {
   await mkdir(outputDir, { recursive: true })
   const savePath = join(outputDir, filename)
@@ -142,6 +161,64 @@ async function downloadVideo(url, filename) {
     await pipeline(Readable.fromWeb(response.body), createWriteStream(tempPath))
     const fileStats = await stat(tempPath)
     if (fileStats.size < 1024) throw new Error('下载到的视频文件为空或已损坏')
+    await rename(tempPath, savePath)
+    return savePath
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => {})
+    throw error
+  }
+}
+
+function imageExtension(contentType, url) {
+  const type = String(contentType || '').toLowerCase()
+  if (type.includes('image/png')) return 'png'
+  if (type.includes('image/webp')) return 'webp'
+  if (type.includes('image/gif')) return 'gif'
+  if (type.includes('image/avif')) return 'avif'
+  if (type.includes('image/heic') || type.includes('image/heif')) {
+    return 'heic'
+  }
+  if (type.includes('image/bmp')) return 'bmp'
+  if (type.includes('image/jpeg') || type.includes('image/jpg')) return 'jpg'
+  if (type && !type.startsWith('image/')) return ''
+
+  try {
+    const pathname = new URL(url).pathname.toLowerCase()
+    const match = pathname.match(/\.(jpe?g|png|webp|gif|avif|heic|bmp)/)
+    if (match) return match[1].replace('jpeg', 'jpg')
+  } catch {
+    // Fall back to jpg when the URL cannot be parsed.
+  }
+  return 'jpg'
+}
+
+async function downloadImage(url, baseName) {
+  await mkdir(outputDir, { recursive: true })
+  const partitionSession = session.fromPartition(DOUBAO_PARTITION)
+  const response = await partitionSession.fetch(url, {
+    credentials: 'include',
+    headers: {
+      accept: 'image/avif,image/webp,image/png,image/jpeg,image/*;q=0.9,*/*;q=0.8',
+      referer: 'https://www.doubao.com/',
+    },
+    signal: AbortSignal.timeout(120_000),
+  })
+  if (!response.ok) throw new Error(`图片下载失败：HTTP ${response.status}`)
+
+  const contentType = response.headers.get('content-type') || ''
+  if (/text\/html|application\/json/i.test(contentType)) {
+    throw new Error('图片地址已失效，请重新生成')
+  }
+  const extension = imageExtension(contentType, url)
+  if (!extension) throw new Error('返回的内容不是图片')
+  if (!response.body) throw new Error('图片响应为空')
+
+  const savePath = join(outputDir, `${baseName}.${extension}`)
+  const tempPath = `${savePath}.part`
+  try {
+    await pipeline(Readable.fromWeb(response.body), createWriteStream(tempPath))
+    const fileStats = await stat(tempPath)
+    if (fileStats.size < 64) throw new Error('下载到的图片文件为空或已损坏')
     await rename(tempPath, savePath)
     return savePath
   } catch (error) {
@@ -183,6 +260,47 @@ async function fetchUnwatermarkedUrl(fallbackApi) {
   return ''
 }
 
+async function processImages(images) {
+  let firstSavedPath = ''
+  let lastError = ''
+
+  for (const image of images) {
+    if (downloadedImageKeys.has(image.key)) continue
+    downloadedImageKeys.add(image.key)
+
+    const baseName = uniqueImageBasename()
+    const record = {
+      id: randomUUID(),
+      kind: 'image',
+      status: 'downloading',
+      filename: `${baseName}.jpg`,
+      path: '',
+      createdAt: Date.now(),
+      message: '正在下载无水印图片…',
+    }
+    downloads.unshift(record)
+    broadcast({ type: 'record', record })
+
+    try {
+      record.path = await downloadImage(image.url, baseName)
+      record.filename = basename(record.path)
+      record.status = 'success'
+      record.message = '已保存到本机'
+      if (!firstSavedPath) firstSavedPath = record.path
+      broadcast({ type: 'record', record })
+    } catch (error) {
+      downloadedImageKeys.delete(image.key)
+      record.status = 'error'
+      record.message = error instanceof Error ? error.message : String(error)
+      broadcast({ type: 'record', record })
+      lastError = record.message
+    }
+  }
+
+  if (firstSavedPath) notifyDownloaded(firstSavedPath, '图片')
+  if (lastError) broadcast({ type: 'error', message: lastError })
+}
+
 async function processResponse(body) {
   if (!monitoring || Date.now() < ignoreUntil || typeof body !== 'string' || !body) {
     return
@@ -190,6 +308,18 @@ async function processResponse(body) {
   const hash = createHash('sha1').update(body).digest('hex')
   if (seenResponseHashes.has(hash)) return
   seenResponseHashes.add(hash)
+
+  const images = extractUnwatermarkedImages(body)
+  if (images.length) {
+    broadcast({
+      type: 'detected',
+      message:
+        images.length > 1
+          ? `检测到 ${images.length} 张豆包图片，正在下载无水印原图…`
+          : '检测到新的豆包图片，正在下载无水印原图…',
+    })
+    await processImages(images)
+  }
 
   const fallbackApis = extractFallbackApis(body)
   if (!fallbackApis.length) return
@@ -210,6 +340,7 @@ async function processResponse(body) {
 
     const record = {
       id: randomUUID(),
+      kind: 'video',
       status: 'downloading',
       filename: uniqueFilename(),
       path: '',
@@ -226,7 +357,7 @@ async function processResponse(body) {
       downloadedUrls.add(videoUrl)
       downloadedUrls.add(fallbackApi)
       broadcast({ type: 'record', record })
-      notifyDownloaded(record.path)
+      notifyDownloaded(record.path, '视频')
       return
     } catch (error) {
       record.status = 'error'
@@ -253,14 +384,14 @@ function enqueueResponse(body) {
   return responseQueue
 }
 
-function notifyDownloaded(savePath) {
+function notifyDownloaded(savePath, label = '作品') {
   broadcast({
     type: 'saved',
-    message: `视频已保存：${savePath}`,
+    message: `${label}已保存：${savePath}`,
   })
   try {
     const notification = new Notification({
-      title: '豆包视频已无水印保存',
+      title: `豆包${label}已无水印保存`,
       body: savePath,
       silent: false,
     })
@@ -285,7 +416,14 @@ const VIDEO_HOOK = String.raw`
   }
 
   function shouldInspect(url) {
-    return typeof url === 'string' && url.indexOf('/im/chain/single') !== -1;
+    if (typeof url !== 'string') return false;
+    return [
+      '/im/chain/single',
+      '/chat/completion',
+      '/creativity/canvas_workspace/doc/get'
+    ].some(function (path) {
+      return url.indexOf(path) !== -1;
+    });
   }
 
   function reportResponse(url, body) {
@@ -423,7 +561,7 @@ async function openDoubaoWindow() {
     minWidth: 960,
     minHeight: 680,
     show: true,
-    title: '豆包 · 生成视频后自动无水印下载',
+    title: '豆包 · 生成图片或视频后自动无水印下载',
     backgroundColor: '#ffffff',
     autoHideMenuBar: true,
     webPreferences: {
@@ -498,7 +636,7 @@ function registerIpc() {
   })
   ipcMain.handle('downloader:choose-output', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: '选择豆包视频保存目录',
+      title: '选择豆包图片与视频保存目录',
       defaultPath: outputDir,
       properties: ['openDirectory', 'createDirectory'],
     })
@@ -520,7 +658,7 @@ function registerIpc() {
   ipcMain.handle('downloader:open-video', async (_event, id) => {
     const record = downloads.find((item) => item.id === id)
     if (!record?.path || !existsSync(record.path)) {
-      return { success: false, error: '视频文件不存在' }
+      return { success: false, error: '文件不存在' }
     }
     const error = await shell.openPath(record.path)
     return error ? { success: false, error } : { success: true }
@@ -528,7 +666,7 @@ function registerIpc() {
   ipcMain.handle('downloader:show-video', (_event, id) => {
     const record = downloads.find((item) => item.id === id)
     if (!record?.path || !existsSync(record.path)) {
-      return { success: false, error: '视频文件不存在' }
+      return { success: false, error: '文件不存在' }
     }
     shell.showItemInFolder(record.path)
     return { success: true }
@@ -536,7 +674,7 @@ function registerIpc() {
   ipcMain.handle('doubao-video-response', (_event, payload) => {
     const url = String(payload?.url || '')
     const body = String(payload?.body || '')
-    if (!url.includes('/im/chain/single') || !body) {
+    if (!isInspectableUrl(url) || !body) {
       return { success: false }
     }
     void enqueueResponse(body)
